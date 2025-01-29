@@ -381,6 +381,7 @@ impl ToQemuParams for Cpu {
 #[derive(Debug)]
 #[allow(dead_code)]
 enum CcwError {
+    #[allow(dead_code)]
     DeviceAlreadyExists(String), // Error when trying to add an existing device
     #[allow(dead_code)]
     DeviceNotFound(String), // Error when trying to remove a nonexistent device
