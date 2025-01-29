@@ -372,6 +372,7 @@ impl ToQemuParams for Cpu {
 /// Error type for CCW Subchannel operations
 #[derive(Debug)]
 enum CcwError {
+    #[allow(dead_code)]
     DeviceAlreadyExists(String), // Error when trying to add an existing device
     #[allow(dead_code)]
     DeviceNotFound(String), // Error when trying to remove a nonexistent device

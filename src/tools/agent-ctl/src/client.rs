@@ -7,6 +7,7 @@
 
 use crate::types::*;
 use crate::utils;
+use crate::vm;
 use anyhow::{anyhow, Result};
 use byteorder::ByteOrder;
 use nix::sys::socket::{connect, socket, AddressFamily, SockAddr, SockFlag, SockType, UnixAddr};
@@ -996,6 +997,10 @@ fn agent_cmd_container_create(
 
     let req = utils::make_create_container_request(input)?;
 
+    // Booting a test pod vm
+    let test_vm_instance = vm::boot_test_vm()?;
+    debug!(sl!(), "create container: test vm booted for hypervisor: {:?}", test_vm_instance.hypervisor_name);
+
     debug!(sl!(), "sending request"; "request" => format!("{:?}", req));
 
     let reply = client
@@ -1004,6 +1009,10 @@ fn agent_cmd_container_create(
 
     info!(sl!(), "response received";
         "response" => format!("{:?}", reply));
+
+    debug!(sl!(), "create container done: shutting down vm");
+    vm::stop_test_vm(test_vm_instance.hypervisor_instance.clone())?;
+    debug!(sl!(), "create container: test vm shut down");
 
     Ok(())
 }

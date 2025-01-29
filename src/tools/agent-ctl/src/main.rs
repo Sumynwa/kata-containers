@@ -25,6 +25,7 @@ mod image;
 mod rpc;
 mod types;
 mod utils;
+mod vm;
 
 const DEFAULT_LOG_LEVEL: slog::Level = slog::Level::Info;
 
