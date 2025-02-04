@@ -9,13 +9,16 @@ use anyhow::{anyhow, Context, Result};
 use slog::{debug, warn};
 use std::sync::Arc;
 use hypervisor::Hypervisor;
+use hypervisor::device::device_manager::DeviceManager;
 use kata_types::config::{TomlConfig, hypervisor::register_hypervisor_plugin, hypervisor::HYPERVISOR_NAME_CH, CloudHypervisorConfig};
+use tokio::sync::RwLock;
 
 mod clh;
 
 pub struct TestVm {
     pub hypervisor_name: String,
     pub hypervisor_instance: Arc<dyn Hypervisor>,
+    pub device_manager: Arc<RwLock<DeviceManager>>,
     pub socket_addr: String,
     pub is_hybrid_vsock: bool,
 }
@@ -115,7 +118,7 @@ pub fn boot_test_vm() -> Result<TestVm> {
             return tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?
-                .block_on(clh::setup_test_vm(hypervisor_config.clone()))
+                .block_on(clh::setup_test_vm(hypervisor_config.clone(), toml_config))
                 .context("pull and unpack container image");
 
         }
