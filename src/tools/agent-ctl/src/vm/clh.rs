@@ -11,6 +11,7 @@ use kata_types::config::hypervisor::Hypervisor as HypervisorConfig;
 use hypervisor::ch::CloudHypervisor;
 use std::collections::HashMap;
 use hypervisor::Hypervisor;
+use super::TestVm;
 
 // Helper fn to boot up a vm.
 // A rough flow for booting a vm.
@@ -19,7 +20,7 @@ use hypervisor::Hypervisor;
 // - start virtiofsd daemon
 // - prepare vm info
 // - boot vm using this info
-pub(crate) async fn setup_test_vm(config: HypervisorConfig) -> Result<Arc<dyn Hypervisor>> {
+pub(crate) async fn setup_test_vm(config: HypervisorConfig) -> Result<TestVm> {
     debug!(sl!(), "clh: booting up a test vm");
     
     let hypervisor = CloudHypervisor::new();
@@ -33,11 +34,15 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig) -> Result<Arc<dyn Hy
     // start vm
     hypervisor.start_vm(10_000).await.context("start vm")?;
 
-    // retrieve the agent socket path
     let agent_socket_path = hypervisor.get_agent_socket().await.context("get agent socket path")?;
-    debug!(sl!(), "clh: vm booted, agent socket path: {:?}", agent_socket_path);
 
-    Ok(Arc::new(hypervisor))
+    // return the vm structure
+    Ok(TestVm{
+        hypervisor_name: "cloud_hypervisor".to_string(),
+        hypervisor_instance: Arc::new(hypervisor),
+        socket_addr: agent_socket_path,
+        is_hybrid_vsock: true,
+    })
 }
 
 pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
@@ -47,4 +52,3 @@ pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
 
     Ok(())
 }
-

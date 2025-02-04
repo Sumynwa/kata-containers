@@ -141,9 +141,11 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
     let interactive = args.is_present("interactive");
     let ignore_errors = args.is_present("ignore-errors");
 
+    //if server-address is empty, see if we can get the same from booted vm.
+    //if not then fail.
     let server_address = args
         .value_of("server-address")
-        .ok_or_else(|| anyhow!("need server adddress"))?
+        .unwrap_or_default()
         .to_string();
 
     let mut commands: Vec<&str> = Vec::new();
@@ -180,7 +182,7 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
     let hybrid_vsock = args.is_present("hybrid-vsock");
     let no_auto_values = args.is_present("no-auto-values");
 
-    let cfg = Config {
+    let mut cfg = Config {
         server_address,
         bundle_dir,
         timeout_nano,
@@ -191,7 +193,7 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
         no_auto_values,
     };
 
-    let result = rpc::run(&logger, &cfg, commands);
+    let result = rpc::run(&logger, &mut cfg, commands);
 
     result.map_err(|e| anyhow!(e))
 }

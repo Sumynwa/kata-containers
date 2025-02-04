@@ -16,6 +16,8 @@ mod clh;
 pub struct TestVm {
     pub hypervisor_name: String,
     pub hypervisor_instance: Arc<dyn Hypervisor>,
+    pub socket_addr: String,
+    pub is_hybrid_vsock: bool,
 }
 
 // Helper function to parse a configuration file.
@@ -110,16 +112,12 @@ pub fn boot_test_vm() -> Result<TestVm> {
     // create a new hypervisor instance
     match hypervisor_name.as_str() {
         "cloud-hypervisor" => {
-            let instance = tokio::runtime::Builder::new_current_thread()
+            return tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?
                 .block_on(clh::setup_test_vm(hypervisor_config.clone()))
-                .context("pull and unpack container image")?;
+                .context("pull and unpack container image");
 
-            Ok(TestVm{
-                hypervisor_name: "cloud_hypervisor".to_string(),
-                hypervisor_instance: instance.clone(),
-            })
         }
         "qemu" => {
             warn!(sl!(), "boot_test_vm: qemu is not implemented");
