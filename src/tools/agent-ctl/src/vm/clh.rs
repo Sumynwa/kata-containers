@@ -34,13 +34,13 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig) -> Result<TestVm> {
     // start vm
     hypervisor.start_vm(10_000).await.context("start vm")?;
 
-    let agent_socket_path = hypervisor.get_agent_socket().await.context("get agent socket path")?;
+    let agent_socket_addr = hypervisor.get_agent_socket().await.context("get agent socket path")?;
 
     // return the vm structure
     Ok(TestVm{
         hypervisor_name: "cloud_hypervisor".to_string(),
         hypervisor_instance: Arc::new(hypervisor),
-        socket_addr: agent_socket_path,
+        socket_addr: agent_socket_addr,
         is_hybrid_vsock: true,
     })
 }

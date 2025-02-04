@@ -29,7 +29,8 @@ pub fn run(logger: &Logger, cfg: &mut Config, commands: Vec<&str>) -> Result<()>
 
     // override the address here
     if !test_vm_instance.socket_addr.is_empty() {
-        cfg.server_address = test_vm_instance.socket_addr;
+        let addr_fields: Vec<&str> = test_vm_instance.socket_addr.split("://").collect();
+        cfg.server_address = format!("{}://{}", "unix", addr_fields[1].to_string());
         cfg.hybrid_vsock = test_vm_instance.is_hybrid_vsock;
     }
 
