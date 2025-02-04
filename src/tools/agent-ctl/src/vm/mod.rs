@@ -5,11 +5,11 @@
 // Description: Helper to boot a pod VM for testing container storages/volumes.
 
 use anyhow::{anyhow, Context, Result};
-use kata_types::{config::TomlConfig};
 //use std::path::{Path, PathBuf};
 use slog::{debug, warn};
 use std::sync::Arc;
 use hypervisor::Hypervisor;
+use kata_types::config::{TomlConfig, hypervisor::register_hypervisor_plugin, hypervisor::HYPERVISOR_NAME_CH, CloudHypervisorConfig};
 
 mod clh;
 
@@ -25,7 +25,7 @@ fn load_config() -> Result<TomlConfig> {
 
     debug!(sl!(), "test_vm_boot: Load kata configuration file");
 
-    let (mut toml_config, _) = TomlConfig::load_from_file(TMP_CONF_FILE).context("test_vm_boot:Failed to load kat config file")?;
+    let (mut toml_config, _) = TomlConfig::load_from_file(TMP_CONF_FILE).context("test_vm_boot:Failed to load kata config file")?;
 
     // Update the agent kernel params in hypervisor config
     update_agent_kernel_params(&mut toml_config)?;
@@ -91,14 +91,19 @@ fn update_agent_kernel_params(config: &mut TomlConfig) -> Result<()> {
 pub fn boot_test_vm() -> Result<TestVm> {
     debug!(sl!(), "boot_test_vm: Booting up a test pod vm...");
 
+    // Register the hypervisor config plugin
+    debug!(sl!(), "boot_test_vm: Register CLH plugin");
+    let config = Arc::new(CloudHypervisorConfig::new());
+    register_hypervisor_plugin(HYPERVISOR_NAME_CH, config);
+
     // get the kata configuration toml
     let toml_config = load_config()?;
 
     // determine the hypervisor
-    let hypervisor_name = &toml_config.runtime.hypervisor_name;
+    let hypervisor_name = "cloud-hypervisor".to_string();
     let hypervisor_config = toml_config
         .hypervisor
-        .get(hypervisor_name)
+        .get(&hypervisor_name)
         .ok_or_else(|| anyhow!("boot_test_vm: failed to get hypervisor for {}", &hypervisor_name))
         .context("get hypervisor name")?;
 
