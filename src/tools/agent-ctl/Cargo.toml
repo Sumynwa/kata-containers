@@ -46,7 +46,7 @@ serde_json = "1.0.73"
 image-rs = { git = "https://github.com/confidential-containers/guest-components", rev = "v0.10.0", features = ["snapshot-overlayfs", "oci-client-rustls", "signature-cosign-rustls"] }
 
 # Cloug hypervisor public HTTP API functions
-api_client = { git = "https://github.com/cloud-hypervisor/cloud-hypervisor", crate = "api_client", tag = "v27.0" }
+#api_client = { git = "https://github.com/cloud-hypervisor/cloud-hypervisor", crate = "api_client", tag = "v27.0" }
 kata-types = { path = "../../libs/kata-types" }
 # hypervisor crate from runtime-rs
 hypervisor = { path = "../../runtime-rs/crates/hypervisor", features = ["cloud-hypervisor"]}
