@@ -1,0 +1,75 @@
+// Copyright (c) 2024 Microsoft Corporation
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Description: Cloud Hypervisor helper to boot a pod VM.
+
+use anyhow::{Context, Result};
+use slog::{debug};
+use std::sync::Arc;
+use kata_types::config::hypervisor::Hypervisor as HypervisorConfig;
+use hypervisor::{
+    device::{
+        device_manager::{do_handle_device, DeviceManager},
+        DeviceConfig,
+    }
+};
+use hypervisor::qemu::Qemu;
+use hypervisor::VsockConfig;
+use kata_types::config::{hypervisor::TopologyConfigInfo, TomlConfig};
+use std::collections::HashMap;
+use hypervisor::Hypervisor;
+use super::TestVm;
+use tokio::sync::RwLock;
+
+const TEST_VM_NAME: &str = "qemu-test-vm";
+
+// Helper function to boot a Qemu vm.
+pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlConfig) -> Result<TestVm> {
+    debug!(sl!(), "qemu: booting up a test vm");
+    
+    let hypervisor = Arc::new(Qemu::new());
+    hypervisor.set_hypervisor_config(config).await;
+
+    // prepare vm
+    // we do not pass any network namesapce since we dont want any
+    let empty_anno_map: HashMap<String, String> = HashMap::new();
+    hypervisor.prepare_vm(TEST_VM_NAME, None, &empty_anno_map).await.context("qemu::prepare test vm")?;
+
+    // We need to add devices before starting the vm
+    // Handling hvsock device for now
+    // instantiate device manager
+    let topo_config = TopologyConfigInfo::new(&toml_config);
+    let dev_manager = Arc::new(
+        RwLock::new(DeviceManager::new(hypervisor.clone(), topo_config.as_ref())
+        .await
+        .context("qemu::failed to create device manager")?
+    ));
+
+    add_vsock_device(dev_manager.clone()).await.context("qemu::adding vsock device")?;
+
+    // start vm
+    hypervisor.start_vm(10_000).await.context("qemu::start vm")?;
+
+    let agent_socket_addr = hypervisor.get_agent_socket().await.context("get agent socket path")?;
+
+    // return the vm structure
+    Ok(TestVm{
+        hypervisor_name: "qemu".to_string(),
+        hypervisor_instance: hypervisor.clone(),
+        device_manager: dev_manager.clone(),
+        socket_addr: agent_socket_addr,
+        is_hybrid_vsock: false,
+    })
+}
+
+async fn add_vsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {
+    let vsock_config = VsockConfig {
+        guest_cid: libc::VMADDR_CID_ANY,
+    };
+
+    do_handle_device(&dev_mgr, &DeviceConfig::VsockCfg(vsock_config))
+        .await
+        .context("qemu::vsock device failed")?;
+    Ok(())
+}

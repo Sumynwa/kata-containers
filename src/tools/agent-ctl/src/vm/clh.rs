@@ -40,7 +40,7 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlCon
     // prepare vm
     // we do not pass any network namesapce since we dont want any
     let empty_anno_map: HashMap<String, String> = HashMap::new();
-    hypervisor.prepare_vm(TEST_VM_NAME, None, &empty_anno_map).await.context("prepare test vm")?;
+    hypervisor.prepare_vm(TEST_VM_NAME, None, &empty_anno_map).await.context("clh::prepare test vm")?;
 
     // We need to add devices before starting the vm
     // Handling hvsock device for now
@@ -49,11 +49,11 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlCon
     let dev_manager = Arc::new(
         RwLock::new(DeviceManager::new(hypervisor.clone(), topo_config.as_ref())
         .await
-        .context("failed to create device manager")?
+        .context("clh::failed to create device manager")?
     ));
 
     // start vm
-    hypervisor.start_vm(10_000).await.context("start vm")?;
+    hypervisor.start_vm(10_000).await.context("clh::start vm")?;
 
     //if hypervisor.capabilities()
     //    .await?
@@ -63,7 +63,7 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlCon
     //    return Err(anyhow!("Hybrid vsock not supported"));
     //}
 
-    let agent_socket_addr = hypervisor.get_agent_socket().await.context("get agent socket path")?;
+    let agent_socket_addr = hypervisor.get_agent_socket().await.context("clh::get agent socket path")?;
 
     // return the vm structure
     Ok(TestVm{
@@ -78,7 +78,7 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlCon
 pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
     debug!(sl!(), "clh: stopping the test vm");
 
-    instance.stop_vm().await.context("stop vm")?;
+    instance.stop_vm().await.context("clh::stop vm")?;
 
     Ok(())
 }
@@ -92,7 +92,7 @@ async fn add_hvsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {
 
     do_handle_device(&dev_mgr, &DeviceConfig::HybridVsockCfg(hvsock_config))
         .await
-        .context("hybrid-vsock device failed")?;
+        .context("clh::hybrid-vsock device failed")?;
 
     Ok(())
 }

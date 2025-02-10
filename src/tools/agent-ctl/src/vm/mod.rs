@@ -14,6 +14,7 @@ use kata_types::config::{TomlConfig, hypervisor::register_hypervisor_plugin, hyp
 use tokio::sync::RwLock;
 
 mod clh;
+mod qemu;
 
 pub struct TestVm {
     pub hypervisor_name: String,
@@ -116,18 +117,20 @@ pub fn boot_test_vm() -> Result<TestVm> {
     match hypervisor_name.as_str() {
         "cloud-hypervisor" => {
             return tokio::runtime::Builder::new_multi_thread()
-		.worker_threads(4)
+                .worker_threads(4)
                 .enable_all()
                 .build()?
                 .block_on(clh::setup_test_vm(hypervisor_config.clone(), toml_config))
-                .context("pull and unpack container image");
+                .context("setting up test vm using Cloud Hypervisor");
 
         }
         "qemu" => {
-            warn!(sl!(), "boot_test_vm: qemu is not implemented");
-            return Err(anyhow!(
-                "boot_test_vm: Hypervisor qemu is not implemented"
-            ));
+            return tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(4)
+                .enable_all()
+                .build()?
+                .block_on(qemu::setup_test_vm(hypervisor_config.clone(), toml_config))
+                .context("setting up test vm using Qemu");
         }
         _ => {
             warn!(sl!(), "boot_test_vm: Unsupported hypervisor : {:?}", hypervisor_name);
