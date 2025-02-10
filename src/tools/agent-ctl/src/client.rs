@@ -421,7 +421,9 @@ fn client_create_vsock_fd(cid: libc::c_uint, port: u32) -> Result<RawFd> {
 // Setup the existing stream by making a Hybrid VSOCK host-initiated
 // connection request to the Hybrid VSOCK-capable hypervisor (CLH or FC),
 // asking it to route the connection to the Kata Agent running inside the VM.
-fn setup_hybrid_vsock(mut stream: &UnixStream, hybrid_vsock_port: u64) -> Result<()> {
+fn setup_hybrid_vsock(path: &str, hybrid_vsock_port: u64) -> Result<UnixStream> {
+    debug!(sl!(), "setup_hybrid_vsock path:{} port: {}", path, hybrid_vsock_port);
+
     // Challenge message sent to the Hybrid VSOCK capable hypervisor asking
     // for a connection to a real VSOCK server running in the VM on the
     // port specified as part of this message.
@@ -431,39 +433,42 @@ fn setup_hybrid_vsock(mut stream: &UnixStream, hybrid_vsock_port: u64) -> Result
     // hypervisor informing the client that the CONNECT_CMD was successful.
     const OK_CMD: &str = "OK";
 
-    // Contact the agent by dialing it's port number and
-    // waiting for the hybrid vsock hypervisor to route the call for us ;)
-    //
-    // See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md#host-initiated-connections
-    let msg = format!("{} {}\n", CONNECT_CMD, hybrid_vsock_port);
+    // Random number for now, approx 6 secs in total
+    let retries = 20;
+    for i in 0..retries {
+        let mut stream = UnixStream::connect(path)?;
+        // Contact the agent by dialing it's port number and
+        // // waiting for the hybrid vsock hypervisor to route the call for us ;)
+        // //
+        // // See: https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md#host-initiated-connections
+        let msg = format!("{} {}\n", CONNECT_CMD, hybrid_vsock_port);
+        stream.write_all(msg.as_bytes())?;
 
-    stream.write_all(msg.as_bytes())?;
+        // Now, see if we get the expected response
+        //let stream_reader = stream.try_clone()?;
+        let mut reader = BufReader::new(&mut stream);
 
-    // Now, see if we get the expected response
-    let stream_reader = stream.try_clone()?;
-    let mut reader = BufReader::new(&stream_reader);
+        let mut msg = String::new();
+        reader.read_line(&mut msg)?;
 
-    let mut msg = String::new();
-    reader.read_line(&mut msg)?;
+        if msg.starts_with(OK_CMD) {
+            let response = msg
+                .strip_prefix(OK_CMD)
+                .ok_or(format!("invalid response: {:?}", msg))
+                .map_err(|e| anyhow!(e))?
+                .trim();
 
-    if msg.starts_with(OK_CMD) {
-        let response = msg
-            .strip_prefix(OK_CMD)
-            .ok_or(format!("invalid response: {:?}", msg))
-            .map_err(|e| anyhow!(e))?
-            .trim();
-
-        debug!(sl!(), "Hybrid VSOCK host-side port: {:?}", response);
-    } else {
-        return Err(anyhow!(
-            "failed to setup Hybrid VSOCK connection: response was: {:?}",
-            msg
-        ));
+            // The Unix stream is now connected directly to the VSOCK socket
+            // the Kata agent is listening to in the VM.
+            debug!(sl!(), "Hybrid VSOCK host-side port: {:?}", response);
+            return Ok(stream);
+        } else {
+            debug!(sl!(), "attempt:{} message: {:?}", i, msg);
+            sleep(Duration::from_millis(300));
+            continue;
+        }
     }
-
-    // The Unix stream is now connected directly to the VSOCK socket
-    // the Kata agent is listening to in the VM.
-    Ok(())
+    Err(anyhow!("Failed to establish hvsock connection with agent"))
 }
 
 fn create_ttrpc_client(
@@ -531,20 +536,14 @@ fn create_ttrpc_client(
                 })?;
 
                 socket_fd
+            } else if hybrid_vsock {
+                let stream = setup_hybrid_vsock(&path, hybrid_vsock_port)?;
+                stream.into_raw_fd()
             } else {
                 let stream = match UnixStream::connect(path) {
                     Ok(s) => s,
-                    Err(e) => {
-                        return Err(
-                            anyhow!(e).context("failed to create named UNIX Domain stream socket")
-                        )
-                    }
+                    Err(err) => { return Err(anyhow!("Sumedh failed to setup unix stream: {:?}", err));}
                 };
-
-                if hybrid_vsock {
-                    setup_hybrid_vsock(&stream, hybrid_vsock_port)?
-                }
-
                 stream.into_raw_fd()
             }
         }

@@ -4,7 +4,7 @@
 //
 // Description: Cloud Hypervisor helper to boot a pod VM.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use slog::{debug};
 use std::sync::Arc;
 use kata_types::config::hypervisor::Hypervisor as HypervisorConfig;
@@ -52,17 +52,16 @@ pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlCon
         .context("failed to create device manager")?
     ));
 
-    if hypervisor.capabilities()
-        .await?
-        .is_hybrid_vsock_supported() {
-            add_hvsock_device(dev_manager.clone()).await.context("adding hvsock device")?;
-    } else {
-        debug!(sl!(), "clh: hybrid vsock not supported");
-        return Err(anyhow!("Hybrid vsock not supported"));
-    }
-
     // start vm
     hypervisor.start_vm(10_000).await.context("start vm")?;
+
+    //if hypervisor.capabilities()
+    //    .await?
+    //    .is_hybrid_vsock_supported() {
+    //        add_hvsock_device(dev_manager.clone()).await.context("adding hvsock device")?;
+    //} else {
+    //    return Err(anyhow!("Hybrid vsock not supported"));
+    //}
 
     let agent_socket_addr = hypervisor.get_agent_socket().await.context("get agent socket path")?;
 
@@ -84,6 +83,7 @@ pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn add_hvsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {
     let hvsock_config = HybridVsockConfig {
         guest_cid: DEFAULT_GUEST_VSOCK_CID,

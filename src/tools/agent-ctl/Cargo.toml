@@ -53,6 +53,6 @@ hypervisor = { path = "../../runtime-rs/crates/hypervisor", features = ["cloud-h
 
 safe-path = { path = "../../libs/safe-path" }
 
-tokio = { version = "1.28.1", features = ["signal"] }
+tokio = { version = "1.28.1", features = ["rt", "rt-multi-thread", "signal"] }
 
 [workspace]
