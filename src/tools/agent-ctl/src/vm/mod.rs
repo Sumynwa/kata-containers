@@ -115,7 +115,8 @@ pub fn boot_test_vm() -> Result<TestVm> {
     // create a new hypervisor instance
     match hypervisor_name.as_str() {
         "cloud-hypervisor" => {
-            return tokio::runtime::Builder::new_current_thread()
+            return tokio::runtime::Builder::new_multi_thread()
+		.worker_threads(4)
                 .enable_all()
                 .build()?
                 .block_on(clh::setup_test_vm(hypervisor_config.clone(), toml_config))
