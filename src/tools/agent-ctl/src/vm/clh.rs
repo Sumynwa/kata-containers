@@ -4,10 +4,11 @@
 //
 // Description: Cloud Hypervisor helper to boot a pod VM.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use crate::vm::{load_config, TestVm};
 use slog::{debug};
 use std::sync::Arc;
-use kata_types::config::hypervisor::Hypervisor as HypervisorConfig;
+use kata_types::config::{hypervisor::register_hypervisor_plugin, hypervisor::HYPERVISOR_NAME_CH, hypervisor::TopologyConfigInfo, CloudHypervisorConfig};
 use hypervisor::{
     device::{
         device_manager::{do_handle_device, DeviceManager},
@@ -16,13 +17,12 @@ use hypervisor::{
 };
 use hypervisor::ch::CloudHypervisor;
 use hypervisor::{utils::get_hvsock_path, HybridVsockConfig, DEFAULT_GUEST_VSOCK_CID};
-use kata_types::config::{hypervisor::TopologyConfigInfo, TomlConfig};
 use std::collections::HashMap;
 use hypervisor::Hypervisor;
-use super::TestVm;
 use tokio::sync::RwLock;
 
-const TEST_VM_NAME: &str = "clh-test-vm";
+const CLH_VM_NAME: &str = "clh-test-vm";
+const CLH_CONFIG_PATH: &str = "/tmp/configuration-clh-test.toml";
 
 // Helper fn to boot up a vm.
 // A rough flow for booting a vm.
@@ -31,16 +31,30 @@ const TEST_VM_NAME: &str = "clh-test-vm";
 // - start virtiofsd daemon
 // - prepare vm info
 // - boot vm using this info
-pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlConfig) -> Result<TestVm> {
+pub(crate) async fn setup_test_vm() -> Result<TestVm> {
     debug!(sl!(), "clh: booting up a test vm");
     
+    // Register the hypervisor config plugin
+    debug!(sl!(), "clh: Register CLH plugin");
+    let config = Arc::new(CloudHypervisorConfig::new());
+    register_hypervisor_plugin(HYPERVISOR_NAME_CH, config);
+
+    // get the kata configuration toml
+    let toml_config = load_config(CLH_CONFIG_PATH)?;
+
+    let hypervisor_config = toml_config
+        .hypervisor
+        .get("cloud-hypervisor")
+        .ok_or_else(|| anyhow!("clh: failed to get hypervisor config"))
+        .context("get hypervisor config")?;
+
     let hypervisor = Arc::new(CloudHypervisor::new());
-    hypervisor.set_hypervisor_config(config).await;
+    hypervisor.set_hypervisor_config(hypervisor_config.clone()).await;
 
     // prepare vm
     // we do not pass any network namesapce since we dont want any
     let empty_anno_map: HashMap<String, String> = HashMap::new();
-    hypervisor.prepare_vm(TEST_VM_NAME, None, &empty_anno_map).await.context("clh::prepare test vm")?;
+    hypervisor.prepare_vm(CLH_VM_NAME, None, &empty_anno_map).await.context("clh: prepare test vm")?;
 
     // We need to add devices before starting the vm
     // Handling hvsock device for now
@@ -87,7 +101,7 @@ pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
 async fn add_hvsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {
     let hvsock_config = HybridVsockConfig {
         guest_cid: DEFAULT_GUEST_VSOCK_CID,
-        uds_path: get_hvsock_path(TEST_VM_NAME),
+        uds_path: get_hvsock_path(CLH_VM_NAME),
     };
 
     do_handle_device(&dev_mgr, &DeviceConfig::HybridVsockCfg(hvsock_config))

@@ -2,15 +2,14 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 //
-// Description: Helper to boot a pod VM for testing container storages/volumes.
+// Description: Boot UVM for testing container storages/volumes.
 
 use anyhow::{anyhow, Context, Result};
-//use std::path::{Path, PathBuf};
 use slog::{debug, warn};
 use std::sync::Arc;
 use hypervisor::Hypervisor;
 use hypervisor::device::device_manager::DeviceManager;
-use kata_types::config::{TomlConfig, hypervisor::register_hypervisor_plugin, hypervisor::HYPERVISOR_NAME_CH, CloudHypervisorConfig};
+use kata_types::config::TomlConfig;
 use tokio::sync::RwLock;
 
 mod clh;
@@ -19,19 +18,17 @@ mod qemu;
 pub struct TestVm {
     pub hypervisor_name: String,
     pub hypervisor_instance: Arc<dyn Hypervisor>,
+    #[allow(dead_code)]
     pub device_manager: Arc<RwLock<DeviceManager>>,
     pub socket_addr: String,
     pub is_hybrid_vsock: bool,
 }
 
 // Helper function to parse a configuration file.
-// TO-DO: For now using a hard-coded temp path.
-fn load_config() -> Result<TomlConfig> {
-    const TMP_CONF_FILE: &str = "/tmp/configuration-clh.toml";
-
+fn load_config(config_file: &str) -> Result<TomlConfig> {
     debug!(sl!(), "test_vm_boot: Load kata configuration file");
 
-    let (mut toml_config, _) = TomlConfig::load_from_file(TMP_CONF_FILE).context("test_vm_boot:Failed to load kata config file")?;
+    let (mut toml_config, _) = TomlConfig::load_from_file(config_file).context("test_vm_boot:Failed to load kata config file")?;
 
     // Update the agent kernel params in hypervisor config
     update_agent_kernel_params(&mut toml_config)?;
@@ -94,42 +91,24 @@ fn update_agent_kernel_params(config: &mut TomlConfig) -> Result<()> {
 //    start_vm
 
 // Helper method to boot a test pod VM
-pub fn boot_test_vm() -> Result<TestVm> {
-    debug!(sl!(), "boot_test_vm: Booting up a test pod vm...");
-
-    // Register the hypervisor config plugin
-    debug!(sl!(), "boot_test_vm: Register CLH plugin");
-    let config = Arc::new(CloudHypervisorConfig::new());
-    register_hypervisor_plugin(HYPERVISOR_NAME_CH, config);
-
-    // get the kata configuration toml
-    let toml_config = load_config()?;
-
-    // determine the hypervisor
-    let hypervisor_name = "cloud-hypervisor".to_string();
-    let hypervisor_config = toml_config
-        .hypervisor
-        .get(&hypervisor_name)
-        .ok_or_else(|| anyhow!("boot_test_vm: failed to get hypervisor for {}", &hypervisor_name))
-        .context("get hypervisor name")?;
+pub fn boot_test_vm(hypervisor_name: String) -> Result<TestVm> {
+    debug!(sl!(), "boot_test_vm: Booting up a test pod vm with {:?}", hypervisor_name);
 
     // create a new hypervisor instance
     match hypervisor_name.as_str() {
         "cloud-hypervisor" => {
-            return tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(4)
+            return tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?
-                .block_on(clh::setup_test_vm(hypervisor_config.clone(), toml_config))
+                .block_on(clh::setup_test_vm())
                 .context("setting up test vm using Cloud Hypervisor");
 
         }
         "qemu" => {
-            return tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(4)
+            return tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?
-                .block_on(qemu::setup_test_vm(hypervisor_config.clone(), toml_config))
+                .block_on(qemu::setup_test_vm())
                 .context("setting up test vm using Qemu");
         }
         _ => {

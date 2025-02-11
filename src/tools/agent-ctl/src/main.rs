@@ -141,12 +141,20 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
     let interactive = args.is_present("interactive");
     let ignore_errors = args.is_present("ignore-errors");
 
-    //if server-address is empty, see if we can get the same from booted vm.
-    //if not then fail.
+    // Bootup a test UVM
+    let hypervisor_name = args.value_of("vm").unwrap_or_default().to_string();
+
     let server_address = args
         .value_of("server-address")
         .unwrap_or_default()
         .to_string();
+
+    // if hypervisor name is provided, we get the server address after the vm
+    // is booted.
+    // if empty, validate server address here
+    if hypervisor_name.is_empty() && server_address.is_empty() {
+        return Err(anyhow!("need server address"));
+    }
 
     let mut commands: Vec<&str> = Vec::new();
 
@@ -191,6 +199,7 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
         hybrid_vsock,
         ignore_errors,
         no_auto_values,
+        hypervisor_name,
     };
 
     let result = rpc::run(&logger, &mut cfg, commands);
@@ -283,6 +292,13 @@ fn real_main() -> Result<()> {
                     .help("timeout value as nanoseconds or using human-readable suffixes (0 [forever], 99ns, 30us, 2ms, 5s, 7m, etc)")
                     .takes_value(true)
                     .value_name("human-time"),
+                    )
+                .arg(
+                    Arg::with_name("vm")
+                    .long("vm")
+                    .help("boot a pod vm for testing commands")
+                    .takes_value(true)
+                    .value_name("HYPERVISOR"),
                     )
                 )
                 .subcommand(
