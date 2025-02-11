@@ -4,10 +4,11 @@
 //
 // Description: Cloud Hypervisor helper to boot a pod VM.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use crate::vm::{load_config, TestVm};
 use slog::{debug};
 use std::sync::Arc;
-use kata_types::config::hypervisor::Hypervisor as HypervisorConfig;
+use kata_types::config::{hypervisor::register_hypervisor_plugin, hypervisor::TopologyConfigInfo, QemuConfig};
 use hypervisor::{
     device::{
         device_manager::{do_handle_device, DeviceManager},
@@ -16,25 +17,38 @@ use hypervisor::{
 };
 use hypervisor::qemu::Qemu;
 use hypervisor::VsockConfig;
-use kata_types::config::{hypervisor::TopologyConfigInfo, TomlConfig};
 use std::collections::HashMap;
 use hypervisor::Hypervisor;
-use super::TestVm;
 use tokio::sync::RwLock;
 
-const TEST_VM_NAME: &str = "qemu-test-vm";
+const QEMU_VM_NAME: &str = "qemu-test-vm";
+const QEMU_CONFIG_PATH: &str = "/tmp/configuration-qemu-test.toml";
 
 // Helper function to boot a Qemu vm.
-pub(crate) async fn setup_test_vm(config: HypervisorConfig, toml_config: TomlConfig) -> Result<TestVm> {
+pub(crate) async fn setup_test_vm() -> Result<TestVm> {
     debug!(sl!(), "qemu: booting up a test vm");
     
+    // Register the hypervisor config plugin
+    debug!(sl!(), "qemu: Register CLH plugin");
+    let config = Arc::new(QemuConfig::new());
+    register_hypervisor_plugin("qemu", config);
+
+    // get the kata configuration toml
+    let toml_config = load_config(QEMU_CONFIG_PATH)?;
+
+    let hypervisor_config = toml_config
+        .hypervisor
+        .get("cloud-hypervisor")
+        .ok_or_else(|| anyhow!("clh: failed to get hypervisor config"))
+        .context("get hypervisor config")?;
+
     let hypervisor = Arc::new(Qemu::new());
-    hypervisor.set_hypervisor_config(config).await;
+    hypervisor.set_hypervisor_config(hypervisor_config.clone()).await;
 
     // prepare vm
     // we do not pass any network namesapce since we dont want any
     let empty_anno_map: HashMap<String, String> = HashMap::new();
-    hypervisor.prepare_vm(TEST_VM_NAME, None, &empty_anno_map).await.context("qemu::prepare test vm")?;
+    hypervisor.prepare_vm(QEMU_VM_NAME, None, &empty_anno_map).await.context("qemu::prepare test vm")?;
 
     // We need to add devices before starting the vm
     // Handling hvsock device for now
