@@ -96,7 +96,7 @@ pub fn boot_test_vm(hypervisor_name: String) -> Result<TestVm> {
 
     // create a new hypervisor instance
     match hypervisor_name.as_str() {
-        "cloud-hypervisor" => {
+        clh::CLH_HYP => {
             return tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?
@@ -104,7 +104,7 @@ pub fn boot_test_vm(hypervisor_name: String) -> Result<TestVm> {
                 .context("setting up test vm using Cloud Hypervisor");
 
         }
-        "qemu" => {
+        qemu::QEMU_HYP => {
             return tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()?
