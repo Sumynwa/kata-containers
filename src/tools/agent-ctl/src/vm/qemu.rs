@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use hypervisor::Hypervisor;
 use tokio::sync::RwLock;
 
+pub const QEMU_HYP: &str = "qemu";
 const QEMU_VM_NAME: &str = "qemu-test-vm";
 const QEMU_CONFIG_PATH: &str = "/tmp/configuration-qemu-test.toml";
 
@@ -38,8 +39,8 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
 
     let hypervisor_config = toml_config
         .hypervisor
-        .get("cloud-hypervisor")
-        .ok_or_else(|| anyhow!("clh: failed to get hypervisor config"))
+        .get(QEMU_HYP)
+        .ok_or_else(|| anyhow!("qemu: failed to get hypervisor config"))
         .context("get hypervisor config")?;
 
     let hypervisor = Arc::new(Qemu::new());
@@ -65,8 +66,12 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
     // start vm
     hypervisor.start_vm(10_000).await.context("qemu::start vm")?;
 
-    let agent_socket_addr = hypervisor.get_agent_socket().await.context("get agent socket path")?;
+    // Qemu only returns the guest_cid in vsock URI
+    // append the port information as well
+    let mut agent_socket_addr = hypervisor.get_agent_socket().await.context("get agent socket path")?;
+    agent_socket_addr.push_str(":1024");
 
+    debug!(sl!(), "qemu: agent socket: {:?}", agent_socket_addr);
     // return the vm structure
     Ok(TestVm{
         hypervisor_name: "qemu".to_string(),

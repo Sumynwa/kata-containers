@@ -32,10 +32,12 @@ pub fn run(logger: &Logger, cfg: &mut Config, commands: Vec<&str>) -> Result<()>
 
         // override the address here
         if !test_vm_instance.socket_addr.is_empty() {
-            let addr_fields: Vec<&str> = test_vm_instance.socket_addr.split("://").collect();
             // hybrid vsock URI expects unix prefix
             if test_vm_instance.is_hybrid_vsock {
+                let addr_fields: Vec<&str> = test_vm_instance.socket_addr.split("://").collect();
                 cfg.server_address = format!("{}://{}", "unix", addr_fields[1].to_string());
+            } else {
+                cfg.server_address = test_vm_instance.socket_addr;
             }
             cfg.hybrid_vsock = test_vm_instance.is_hybrid_vsock;
         }

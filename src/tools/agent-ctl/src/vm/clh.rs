@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use hypervisor::Hypervisor;
 use tokio::sync::RwLock;
 
+pub const CLH_HYP: &str = "clh";
 const CLH_VM_NAME: &str = "clh-test-vm";
 const CLH_CONFIG_PATH: &str = "/tmp/configuration-clh-test.toml";
 
