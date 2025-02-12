@@ -403,19 +403,30 @@ fn get_builtin_cmd_func(name: &str) -> Result<BuiltinCmdFp> {
 }
 
 fn client_create_vsock_fd(cid: libc::c_uint, port: u32) -> Result<RawFd> {
-    let fd = socket(
-        AddressFamily::Vsock,
-        SockType::Stream,
-        SockFlag::SOCK_CLOEXEC,
-        None,
-    )
-    .map_err(|e| anyhow!(e))?;
+    // Random number for now, approx 6 secs in total
+    let retries = 20;
+    for i in 0..retries {
+        let fd = socket(
+            AddressFamily::Vsock,
+            SockType::Stream,
+            SockFlag::SOCK_CLOEXEC,
+            None,
+            )
+            .map_err(|e| anyhow!(e))?;
 
-    let sock_addr = SockAddr::new_vsock(cid, port);
+        let sock_addr = SockAddr::new_vsock(cid, port);
 
-    connect(fd, &sock_addr).map_err(|e| anyhow!(e))?;
+        match connect(fd, &sock_addr) {
+            Ok(_) => return Ok(fd),
+            Err(e) => {
+                debug!(sl!(), "Failed to connect to vsock in attempt:{} error:{:?}", i, e);
+                sleep(Duration::from_millis(300));
+                continue;
+            }
+        }
+    }
 
-    Ok(fd)
+    Err(anyhow!("Failed to establish vsock connection with agent"))
 }
 
 // Setup the existing stream by making a Hybrid VSOCK host-initiated
