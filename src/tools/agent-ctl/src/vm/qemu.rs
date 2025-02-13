@@ -16,7 +16,7 @@ use hypervisor::{
     }
 };
 use hypervisor::qemu::Qemu;
-use hypervisor::VsockConfig;
+use hypervisor::{BlockConfig, VsockConfig};
 use std::collections::HashMap;
 use hypervisor::Hypervisor;
 use tokio::sync::RwLock;
@@ -52,7 +52,6 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
     hypervisor.prepare_vm(QEMU_VM_NAME, None, &empty_anno_map).await.context("qemu::prepare test vm")?;
 
     // We need to add devices before starting the vm
-    // Handling hvsock device for now
     // instantiate device manager
     let topo_config = TopologyConfigInfo::new(&toml_config);
     let dev_manager = Arc::new(
@@ -62,6 +61,18 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
     ));
 
     add_vsock_device(dev_manager.clone()).await.context("qemu::adding vsock device")?;
+
+    // If config uses image as vm rootfs, insert it as a disk
+    if !hypervisor_config.boot_info.image.is_empty() {
+        debug!(sl!(), "qemu::adding vm rootfs");
+        let blk_config = BlockConfig {
+            path_on_host: hypervisor_config.boot_info.image.clone(),
+            is_readonly: true,
+            driver_option: hypervisor_config.boot_info.vm_rootfs_driver.clone(),
+            ..Default::default()
+        };
+        add_block_device(dev_manager.clone(), blk_config).await.context("qemu::adding vm rootfs")?;
+    }
 
     // start vm
     hypervisor.start_vm(10_000).await.context("qemu::start vm")?;
@@ -89,6 +100,13 @@ async fn add_vsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {
 
     do_handle_device(&dev_mgr, &DeviceConfig::VsockCfg(vsock_config))
         .await
-        .context("qemu::vsock device failed")?;
+        .context("qemu::handle vsock device failed")?;
+    Ok(())
+}
+
+async fn add_block_device(dev_mgr: Arc<RwLock<DeviceManager>>, blk_config: BlockConfig) ->Result<()> {
+    do_handle_device(&dev_mgr, &DeviceConfig::BlockCfg(blk_config))
+        .await
+        .context("qemu:handle block device failed")?;
     Ok(())
 }
