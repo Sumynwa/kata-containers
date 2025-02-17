@@ -27,7 +27,7 @@ pub fn run(logger: &Logger, cfg: &mut Config, commands: Vec<&str>) -> Result<()>
         // Check if we have a socket address.
         if test_vm_instance.socket_addr.is_empty() {
             debug!(sl!(), "failed to get valid socket address, exiting!!");
-            return vm::stop_test_vm(test_vm_instance.hypervisor_instance.clone());
+            return vm::stop_test_vm(test_vm_instance);
         }
 
         // override the address here
@@ -37,7 +37,7 @@ pub fn run(logger: &Logger, cfg: &mut Config, commands: Vec<&str>) -> Result<()>
                 let addr_fields: Vec<&str> = test_vm_instance.socket_addr.split("://").collect();
                 cfg.server_address = format!("{}://{}", "unix", addr_fields[1].to_string());
             } else {
-                cfg.server_address = test_vm_instance.socket_addr;
+                cfg.server_address = test_vm_instance.socket_addr.clone()
             }
             cfg.hybrid_vsock = test_vm_instance.is_hybrid_vsock;
         }
@@ -48,7 +48,7 @@ pub fn run(logger: &Logger, cfg: &mut Config, commands: Vec<&str>) -> Result<()>
         }
 
         debug!(sl!(), "Shutting down vm");
-        vm::stop_test_vm(test_vm_instance.hypervisor_instance.clone())
+        vm::stop_test_vm(test_vm_instance)
     } else {
         client(cfg, commands)
     }

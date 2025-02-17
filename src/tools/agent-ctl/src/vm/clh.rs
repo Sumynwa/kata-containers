@@ -5,8 +5,8 @@
 // Description: Cloud Hypervisor helper to boot a pod VM.
 
 use anyhow::{anyhow, Context, Result};
-use crate::vm::{load_config, TestVm};
-use slog::{debug};
+use crate::vm::{load_config, TestVm, virtio_fs::{SharedFs, setup_virtio_fs, shutdown_virtiofsd}};
+use slog::debug;
 use std::sync::Arc;
 use kata_types::config::{hypervisor::register_hypervisor_plugin, hypervisor::HYPERVISOR_NAME_CH, hypervisor::TopologyConfigInfo, CloudHypervisorConfig};
 use hypervisor::{
@@ -67,31 +67,35 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
         .context("clh::failed to create device manager")?
     ));
 
+    // setup file system sharing, if hypervisor supports it
+    let mut shared_fs_info = SharedFs::default();
+    if hypervisor.capabilities().await?.is_fs_sharing_supported() {
+        debug!(sl!(), "clh::fs sharing is supported, setting it up");
+        shared_fs_info = setup_virtio_fs(hypervisor.clone(), dev_manager.clone(), CLH_VM_NAME).await?;
+    }
+
     // start vm
     hypervisor.start_vm(10_000).await.context("clh::start vm")?;
-
-    //if hypervisor.capabilities()
-    //    .await?
-    //    .is_hybrid_vsock_supported() {
-    //        add_hvsock_device(dev_manager.clone()).await.context("adding hvsock device")?;
-    //} else {
-    //    return Err(anyhow!("Hybrid vsock not supported"));
-    //}
 
     let agent_socket_addr = hypervisor.get_agent_socket().await.context("clh::get agent socket path")?;
 
     // return the vm structure
     Ok(TestVm{
-        hypervisor_name: "cloud_hypervisor".to_string(),
+        hypervisor_name: "clh".to_string(),
         hypervisor_instance: hypervisor.clone(),
         device_manager: dev_manager.clone(),
         socket_addr: agent_socket_addr,
         is_hybrid_vsock: true,
+        shared_fs_info: shared_fs_info,
     })
 }
 
-pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
+pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>, fs_info: SharedFs) -> Result<()> {
     debug!(sl!(), "clh: stopping the test vm");
+
+    if fs_info.pid > 0 {
+       shutdown_virtiofsd(fs_info).await?;
+    }
 
     instance.stop_vm().await.context("clh::stop vm")?;
 

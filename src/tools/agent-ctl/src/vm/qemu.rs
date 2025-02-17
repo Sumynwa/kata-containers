@@ -5,7 +5,7 @@
 // Description: Cloud Hypervisor helper to boot a pod VM.
 
 use anyhow::{anyhow, Context, Result};
-use crate::vm::{load_config, TestVm};
+use crate::vm::{load_config, TestVm, virtio_fs::{SharedFs, setup_virtio_fs, shutdown_virtiofsd}};
 use slog::{debug};
 use std::sync::Arc;
 use kata_types::config::{hypervisor::register_hypervisor_plugin, hypervisor::TopologyConfigInfo, QemuConfig};
@@ -74,6 +74,13 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
         add_block_device(dev_manager.clone(), blk_config).await.context("qemu::adding vm rootfs")?;
     }
 
+    // setup file system sharing, if hypervisor supports it
+    let mut shared_fs_info = SharedFs::default();
+    if hypervisor.capabilities().await?.is_fs_sharing_supported() {
+        debug!(sl!(), "qemu::fs sharing is supported, setting it up");
+        shared_fs_info = setup_virtio_fs(hypervisor.clone(), dev_manager.clone(), QEMU_VM_NAME).await?;
+    }
+
     // start vm
     hypervisor.start_vm(10_000).await.context("qemu::start vm")?;
 
@@ -90,7 +97,20 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
         device_manager: dev_manager.clone(),
         socket_addr: agent_socket_addr,
         is_hybrid_vsock: false,
+        shared_fs_info: shared_fs_info,
     })
+}
+
+pub(crate) async fn stop_test_vm(instance: Arc<dyn Hypervisor>, fs_info: SharedFs) -> Result<()> {
+    debug!(sl!(), "qemu: stopping the test vm");
+
+    if fs_info.pid > 0 {
+       shutdown_virtiofsd(fs_info).await?;
+    }
+
+    instance.stop_vm().await.context("qemu::stop vm")?;
+
+    Ok(())
 }
 
 async fn add_vsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {

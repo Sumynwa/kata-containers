@@ -11,9 +11,11 @@ use hypervisor::Hypervisor;
 use hypervisor::device::device_manager::DeviceManager;
 use kata_types::config::TomlConfig;
 use tokio::sync::RwLock;
+use virtio_fs::SharedFs;
 
 mod clh;
 mod qemu;
+mod virtio_fs;
 
 pub struct TestVm {
     pub hypervisor_name: String,
@@ -22,6 +24,7 @@ pub struct TestVm {
     pub device_manager: Arc<RwLock<DeviceManager>>,
     pub socket_addr: String,
     pub is_hybrid_vsock: bool,
+    pub shared_fs_info: SharedFs,
 }
 
 // Helper function to parse a configuration file.
@@ -121,14 +124,28 @@ pub fn boot_test_vm(hypervisor_name: String) -> Result<TestVm> {
 }
 
 // Helper method to shutdown a test pod VM
-pub fn stop_test_vm(instance: Arc<dyn Hypervisor>) -> Result<()> {
+pub fn stop_test_vm(vm_instance: TestVm) -> Result<()> {
     debug!(sl!(), "stop_test_vm: stopping booted vm");
 
-    let _ = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?
-        .block_on(clh::stop_test_vm(instance))
-        .context("stop booted test vm")?;
+    match vm_instance.hypervisor_name.as_str(){
+        clh::CLH_HYP => {
+            let _ = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(clh::stop_test_vm(vm_instance.hypervisor_instance.clone(), vm_instance.shared_fs_info.clone()))
+                .context("stop booted test vm")?;
+        }
+        qemu::QEMU_HYP => {
+            let _ = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?
+                .block_on(qemu::stop_test_vm(vm_instance.hypervisor_instance.clone(), vm_instance.shared_fs_info.clone()))
+                .context("stop booted test vm")?;
+        }
+        _ => {
+            warn!(sl!(), "Invalid hypervisor name passed to shutdown: {:?}", vm_instance.hypervisor_name);
+        }
+    }
 
     Ok(())
 }
