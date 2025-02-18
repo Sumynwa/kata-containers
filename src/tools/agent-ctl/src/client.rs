@@ -9,7 +9,7 @@ use crate::types::*;
 use crate::utils;
 use anyhow::{anyhow, Result};
 use byteorder::ByteOrder;
-use nix::sys::socket::{connect, socket, AddressFamily, SockAddr, SockFlag, SockType, UnixAddr};
+use nix::sys::socket::{connect, socket, AddressFamily, VsockAddr, SockFlag, SockType, UnixAddr};
 use protocols::agent::*;
 use protocols::agent_ttrpc::*;
 use protocols::health::*;
@@ -406,6 +406,8 @@ fn client_create_vsock_fd(cid: libc::c_uint, port: u32) -> Result<RawFd> {
     // Random number for now, approx 6 secs in total
     let retries = 20;
     for i in 0..retries {
+        let sock_addr = VsockAddr::new(cid, port);
+
         let fd = socket(
             AddressFamily::Vsock,
             SockType::Stream,
@@ -414,8 +416,7 @@ fn client_create_vsock_fd(cid: libc::c_uint, port: u32) -> Result<RawFd> {
             )
             .map_err(|e| anyhow!(e))?;
 
-        let sock_addr = SockAddr::new_vsock(cid, port);
-
+        // Connect the socket to vsock server.
         match connect(fd, &sock_addr) {
             Ok(_) => return Ok(fd),
             Err(e) => {
@@ -540,9 +541,7 @@ fn create_ttrpc_client(
                     }
                 };
 
-                let sock_addr = SockAddr::Unix(unix_addr);
-
-                connect(socket_fd, &sock_addr).map_err(|e| {
+                connect(socket_fd, &unix_addr).map_err(|e| {
                     anyhow!(e).context("Failed to connect to Unix Domain abstract socket")
                 })?;
 
@@ -672,6 +671,10 @@ pub fn client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
 
     // Convenience option
     options.insert("bundle-dir".to_string(), cfg.bundle_dir.clone());
+
+    if !cfg.shared_fs_host_path.is_empty() {
+        options.insert("shared-path".to_string(), cfg.shared_fs_host_path.clone());
+    }
 
     info!(sl!(), "client setup complete";
         "server-address" => cfg.server_address.to_string());
@@ -992,7 +995,7 @@ fn agent_cmd_container_create(
     ctx: &Context,
     client: &AgentServiceClient,
     _health: &HealthClient,
-    _options: &mut Options,
+    options: &mut Options,
     args: &str,
 ) -> Result<()> {
     let input: CreateContainerInput = utils::make_request(args)?;
@@ -1004,7 +1007,13 @@ fn agent_cmd_container_create(
 
     let ctx = clone_context(ctx);
 
-    let req = utils::make_create_container_request(input)?;
+    // determine if host/guest fs sharing is setup.
+    let share_fs_path = match options.get("shared-path") {
+        Some(p) => p.to_string(),
+        None => "".to_string(),
+    };
+
+    let req = utils::make_create_container_request(input, share_fs_path)?;
 
     debug!(sl!(), "sending request"; "request" => format!("{:?}", req));
 
@@ -1022,7 +1031,7 @@ fn agent_cmd_container_remove(
     ctx: &Context,
     client: &AgentServiceClient,
     _health: &HealthClient,
-    _options: &mut Options,
+    options: &mut Options,
     args: &str,
 ) -> Result<()> {
     let req: RemoveContainerRequest = utils::make_request(args)?;
@@ -1038,8 +1047,14 @@ fn agent_cmd_container_remove(
     info!(sl!(), "response received";
         "response" => format!("{:?}", reply));
 
-    // Un-mount the rootfs mount point.
-    utils::remove_container_image_mount(req.container_id())?;
+    // Unmount the share fs
+    let share_fs_path = match options.get("shared-path") {
+        Some(p) => p.to_string(),
+        None => "".to_string(),
+    };
+
+    // Unmount the rootfs mount point.
+    utils::remove_container_image_mount(req.container_id(), &share_fs_path)?;
 
     Ok(())
 }

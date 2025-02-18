@@ -25,8 +25,8 @@ use tokio::{
     },
 };
 
-const VIRTIO_FS: &str = "virtio-fs";
-const MOUNT_GUEST_TAG: &str = "kataShared";
+pub const VIRTIO_FS: &str = "virtio-fs";
+pub const MOUNT_GUEST_TAG: &str = "kataShared";
 const VIRTIO_FS_SOCKET: &str = "virtiofsd.sock";
 
 // For test purpose, we can simplify the shared path as below:

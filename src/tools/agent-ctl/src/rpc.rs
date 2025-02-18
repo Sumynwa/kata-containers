@@ -42,6 +42,12 @@ pub fn run(logger: &Logger, cfg: &mut Config, commands: Vec<&str>) -> Result<()>
             cfg.hybrid_vsock = test_vm_instance.is_hybrid_vsock;
         }
 
+        // Set shared path if set
+        if test_vm_instance.shared_fs_info.pid != 0 {
+            debug!(sl!(), "setting host shared root path in config");
+            cfg.shared_fs_host_path = test_vm_instance.shared_fs_info.shared_path.clone();
+        }
+
         match client(cfg, commands) {
             Ok(_) => debug!(sl!(), "Commands tested successfully"),
             Err(e) => debug!(sl!(), "Command failed: {}", e),
