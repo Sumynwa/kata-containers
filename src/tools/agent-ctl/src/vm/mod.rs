@@ -16,6 +16,7 @@ use virtio_fs::SharedFs;
 mod clh;
 mod qemu;
 mod virtio_fs;
+pub mod utils;
 
 pub struct TestVm {
     pub hypervisor_name: String,

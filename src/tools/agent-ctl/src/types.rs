@@ -9,7 +9,7 @@ use std::collections::HashMap;
 // Type used to pass optional state between cooperating API calls.
 pub type Options = HashMap<String, String>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub server_address: String,
     pub bundle_dir: String,
@@ -20,6 +20,8 @@ pub struct Config {
     pub ignore_errors: bool,
     pub no_auto_values: bool,
     pub hypervisor_name: String,
+    // Keeping around the shared fs path information.
+    pub shared_fs_host_path: String,
 }
 
 // CopyFile input struct

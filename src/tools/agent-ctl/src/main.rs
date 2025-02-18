@@ -200,6 +200,7 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
         ignore_errors,
         no_auto_values,
         hypervisor_name,
+        ..Default::default()
     };
 
     let result = rpc::run(&logger, &mut cfg, commands);
