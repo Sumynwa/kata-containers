@@ -7,6 +7,7 @@
 
 use crate::types::*;
 use crate::utils;
+use crate::vm;
 use anyhow::{anyhow, Result};
 use byteorder::ByteOrder;
 use nix::sys::socket::{connect, socket, AddressFamily, VsockAddr, SockFlag, SockType, UnixAddr};
@@ -614,7 +615,7 @@ fn announce(cfg: &Config) {
     info!(sl!(), "announce"; "config" => format!("{:?}", cfg));
 }
 
-pub fn client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
+pub fn client(cfg: &mut Config, commands: Vec<&str>) -> Result<()> {
     if commands.len() == 1 && commands[0].eq("list") {
         println!("Built-in commands:\n");
 
@@ -635,6 +636,51 @@ pub fn client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
         return Ok(());
     }
 
+    // If vm boot is requested, handle it here.
+    // If hypervisor_name is provided, boot the test vm here.
+    // TO-DO: For now a simple if-else block to do work
+    if !cfg.hypervisor_name.is_empty() {
+        // Booting a test pod vm
+        let test_vm_instance = vm::boot_test_vm(cfg.hypervisor_name.clone())?;
+        debug!(sl!(), "test vm booted for hypervisor: {:?}", test_vm_instance.hypervisor_name);
+
+        // Check if we have a socket address.
+        if test_vm_instance.socket_addr.is_empty() {
+            debug!(sl!(), "failed to get valid socket address, exiting!!");
+            return vm::stop_test_vm(test_vm_instance);
+        }
+
+        // override the address here
+        if !test_vm_instance.socket_addr.is_empty() {
+            // hybrid vsock URI expects unix prefix
+            if test_vm_instance.is_hybrid_vsock {
+                let addr_fields: Vec<&str> = test_vm_instance.socket_addr.split("://").collect();
+                cfg.server_address = format!("{}://{}", "unix", addr_fields[1].to_string());
+            } else {
+                cfg.server_address = test_vm_instance.socket_addr.clone()
+            }
+            cfg.hybrid_vsock = test_vm_instance.is_hybrid_vsock;
+        }
+
+        // Set shared path if set
+        if test_vm_instance.shared_fs_info.pid != 0 {
+            debug!(sl!(), "setting host shared root path in config");
+            cfg.shared_fs_host_path = test_vm_instance.shared_fs_info.shared_path.clone();
+        }
+
+        match run_client(cfg, commands) {
+            Ok(_) => debug!(sl!(), "Commands tested successfully"),
+            Err(e) => debug!(sl!(), "Command failed: {}", e),
+        }
+
+        debug!(sl!(), "Shutting down vm");
+        vm::stop_test_vm(test_vm_instance)
+    } else {
+        run_client(cfg, commands)
+    }
+}
+
+pub fn run_client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
     announce(cfg);
 
     // Create separate connections for each of the services provided
@@ -944,7 +990,7 @@ fn agent_cmd_sandbox_create(
     ctx: &Context,
     client: &AgentServiceClient,
     _health: &HealthClient,
-    _options: &mut Options,
+    options: &mut Options,
     args: &str,
 ) -> Result<()> {
     let mut req: CreateSandboxRequest = utils::make_request(args)?;
@@ -964,6 +1010,9 @@ fn agent_cmd_sandbox_create(
 
     info!(sl!(), "response received";
         "response" => format!("{:?}", reply));
+
+    // Set sandbox id in options in case the state is needed by further commands
+    options.insert("sid".to_string(), req.sandbox_id.clone());
 
     Ok(())
 }
@@ -1024,6 +1073,9 @@ fn agent_cmd_container_create(
     info!(sl!(), "response received";
         "response" => format!("{:?}", reply));
 
+    // set container id if needed by later calls
+    options.insert("cid".to_string(), req.container_id.clone());
+
     Ok(())
 }
 
@@ -1034,9 +1086,17 @@ fn agent_cmd_container_remove(
     options: &mut Options,
     args: &str,
 ) -> Result<()> {
-    let req: RemoveContainerRequest = utils::make_request(args)?;
+    let mut req: RemoveContainerRequest = utils::make_request(args)?;
 
     let ctx = clone_context(ctx);
+
+    if req.container_id.is_empty() {
+        let c_id = match options.get("cid") {
+            Some(id) => id.clone(),
+            None => "".to_string(),
+        };
+        req.set_container_id(c_id);
+    }
 
     debug!(sl!(), "sending request"; "request" => format!("{:?}", req));
 
@@ -1203,12 +1263,20 @@ fn agent_cmd_container_start(
     ctx: &Context,
     client: &AgentServiceClient,
     _health: &HealthClient,
-    _options: &mut Options,
+    options: &mut Options,
     args: &str,
 ) -> Result<()> {
-    let req: StartContainerRequest = utils::make_request(args)?;
+    let mut req: StartContainerRequest = utils::make_request(args)?;
 
     let ctx = clone_context(ctx);
+
+    if req.container_id.is_empty() {
+        let c_id = match options.get("cid") {
+            Some(id) => id.clone(),
+            None => "".to_string(),
+        };
+        req.set_container_id(c_id);
+    }
 
     debug!(sl!(), "sending request"; "request" => format!("{:?}", req));
 

@@ -41,5 +41,6 @@ pub struct SetPolicyInput {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CreateContainerInput {
     pub image: String,
+    #[serde(default)]
     pub id: String,
 }
