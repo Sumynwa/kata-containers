@@ -11,6 +11,8 @@ use anyhow::{anyhow, Result};
 use clap::{crate_name, crate_version, App, Arg, SubCommand};
 use std::io;
 use std::process::exit;
+use std::fs;
+use std::io::{BufRead, BufReader};
 
 // Convenience macro to obtain the scope logger
 #[macro_export]
@@ -144,6 +146,8 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
     // Bootup a test UVM
     let hypervisor_name = args.value_of("vm").unwrap_or_default().to_string();
 
+    let cmd_file = args.value_of("cmdfile").unwrap_or_default().to_string();
+
     let server_address = args
         .value_of("server-address")
         .unwrap_or_default()
@@ -158,11 +162,29 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
 
     let mut commands: Vec<&str> = Vec::new();
 
+    // if command list is provided via file, parse it first
+    let mut cmds_from_file: Vec<String> = Vec::new();
+    if !cmd_file.is_empty() {
+        let f = fs::File::open(cmd_file)?;
+        let f = BufReader::new(f);
+        for line in f.lines() {
+            cmds_from_file.push(line.unwrap());
+        }
+    }
+
     if !interactive {
         commands = args
             .values_of("cmd")
-            .ok_or_else(|| anyhow!("need commands to send to the server"))?
+            .unwrap_or_default()
             .collect();
+    }
+
+    for cmds in cmds_from_file.iter() {
+        commands.push(cmds);
+    }
+
+    if commands.len() == 0 {
+        return Err(anyhow!("need commands to send to the server"));
     }
 
     let log_level_name = global_args
@@ -300,6 +322,13 @@ fn real_main() -> Result<()> {
                     .help("boot a pod vm for testing commands")
                     .takes_value(true)
                     .value_name("HYPERVISOR"),
+                    )
+                .arg(
+                    Arg::with_name("cmdfile")
+                    .long("cmdfile")
+                    .help("file containing list of newline separated commands with arguments to test")
+                    .takes_value(true)
+                    .value_name("CMDFILE"),
                     )
                 )
                 .subcommand(
