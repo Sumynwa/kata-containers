@@ -20,7 +20,7 @@ pub struct Config {
     pub ignore_errors: bool,
     pub no_auto_values: bool,
     pub hypervisor_name: String,
-    // Keeping around the shared fs path information.
+    pub storages: String,
     pub shared_fs_host_path: String,
 }
 

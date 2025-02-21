@@ -1,0 +1,21 @@
+[
+	{
+		"driver": "blk",
+		"driver_options": [],
+		"source": "/dev/test-blk0",
+		"fstype": "ext4",
+		"options": [],
+		"mount_point": "",
+		"fs_group": null
+	},
+	{
+		"driver":"virtio-fs",
+		"driver_options":[],
+		"options":[""],
+		"source":"/tmp/test",
+		"fs_group":null,
+		"fstype": "bind",
+		"mount_point":""
+	}
+]
+
