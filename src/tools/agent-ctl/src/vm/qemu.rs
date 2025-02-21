@@ -71,7 +71,9 @@ pub(crate) async fn setup_test_vm() -> Result<TestVm> {
             driver_option: hypervisor_config.boot_info.vm_rootfs_driver.clone(),
             ..Default::default()
         };
-        add_block_device(dev_manager.clone(), blk_config).await.context("qemu::adding vm rootfs")?;
+        do_handle_device(&dev_manager, &DeviceConfig::BlockCfg(blk_config))
+            .await
+            .context("qemu:handle block device failed")?;
     }
 
     // setup file system sharing, if hypervisor supports it
@@ -121,12 +123,5 @@ async fn add_vsock_device(dev_mgr: Arc<RwLock<DeviceManager>>) -> Result<()> {
     do_handle_device(&dev_mgr, &DeviceConfig::VsockCfg(vsock_config))
         .await
         .context("qemu::handle vsock device failed")?;
-    Ok(())
-}
-
-async fn add_block_device(dev_mgr: Arc<RwLock<DeviceManager>>, blk_config: BlockConfig) ->Result<()> {
-    do_handle_device(&dev_mgr, &DeviceConfig::BlockCfg(blk_config))
-        .await
-        .context("qemu:handle block device failed")?;
     Ok(())
 }

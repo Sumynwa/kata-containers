@@ -5,7 +5,13 @@
 
 use crate::image;
 use crate::types::*;
-use crate::vm::utils::{get_virtiofs_storage, share_rootfs, unshare_rootfs};
+use crate::vm::utils::{
+    append_storages_and_mounts,
+    get_virtiofs_storage,
+    share_rootfs,
+    unshare_rootfs,
+    unmount_shares,
+};
 use anyhow::{anyhow, Result};
 use oci::{Root as ociRoot, Spec as ociSpec};
 use oci_spec::runtime as oci;
@@ -569,12 +575,15 @@ pub fn make_create_container_request(
     req.set_container_id(c_id);
     req.set_OCI(ttrpc_spec);
 
+    append_storages_and_mounts(&mut req)?;
+
     debug!(sl!(), "CreateContainer request generated successfully");
 
     Ok(req)
 }
 
-pub fn remove_container_image_mount(c_id: &str, share_fs: &str) -> Result<()> {
+pub fn remove_container_mounts(c_id: &str, share_fs: &str) -> Result<()> {
     unshare_rootfs(share_fs, c_id)?;
-    image::remove_image_mount(c_id)
+    image::remove_image_mount(c_id)?;
+    unmount_shares()
 }

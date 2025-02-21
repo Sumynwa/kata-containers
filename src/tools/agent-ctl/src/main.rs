@@ -148,6 +148,13 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
 
     let cmd_file = args.value_of("cmdfile").unwrap_or_default().to_string();
 
+    let storages = args.value_of("vol").unwrap_or_default().to_string();
+
+    // storages work with vm support
+    if hypervisor_name.is_empty() && !storages.is_empty() {
+        return Err(anyhow!("need vm type in order to test storages"));
+    }
+
     let server_address = args
         .value_of("server-address")
         .unwrap_or_default()
@@ -222,6 +229,7 @@ fn connect(name: &str, global_args: clap::ArgMatches) -> Result<()> {
         ignore_errors,
         no_auto_values,
         hypervisor_name,
+        storages,
         ..Default::default()
     };
 
@@ -329,6 +337,13 @@ fn real_main() -> Result<()> {
                     .help("file containing list of newline separated commands with arguments to test")
                     .takes_value(true)
                     .value_name("CMDFILE"),
+                    )
+                .arg(
+                    Arg::with_name("vol")
+                    .long("volumes")
+                    .help("file containing list of storages to test")
+                    .takes_value(true)
+                    .value_name("VOLFILE"),
                     )
                 )
                 .subcommand(

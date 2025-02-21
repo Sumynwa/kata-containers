@@ -18,6 +18,7 @@ mod qemu;
 mod virtio_fs;
 pub mod utils;
 
+#[derive(Clone)]
 pub struct TestVm {
     pub hypervisor_name: String,
     pub hypervisor_instance: Arc<dyn Hypervisor>,
@@ -70,29 +71,6 @@ fn update_agent_kernel_params(config: &mut TomlConfig) -> Result<()> {
     }
     Ok(())
 }
-
-// virtiofsd - need to start this as well???
-// Look into this for CLH
-// crates/runtimes/virt_container/src/lib.rs: new_hypervisor()::CloudHypervisor::new()
-//                                            set_config()
-// crates/runtimes/virt_container/src/sandbox.rs:: start()
-// Not sure but need to see what all happens with the hypervisor config we have from the toml
-// Can we simply use that config and give it to CLH API client to create a vm??
-// prepare_vm:
-// - set ns to none
-// - dont handle confidential guests
-// - look at setting the run paths on host
-//         // run_dir and vm_path are the same (shared)
-//        self.run_dir = get_sandbox_path(&self.id);
-//        self.vm_path = self.run_dir.to_string();
-//
-// Using the runtime-rs hypervisor crate.
-// 1. Launch the clh process: Need to initialize CloudHypervisor::CloudHypervisorInner
-// 2. Look into CloudHypervisorInner: start_hypervisor (are these pub functions??)
-// 3. prepare_hypervisor
-//    launch_hypervisor
-//    prepare_vm
-//    start_vm
 
 // Helper method to boot a test pod VM
 pub fn boot_test_vm(hypervisor_name: String) -> Result<TestVm> {
@@ -149,4 +127,10 @@ pub fn stop_test_vm(vm_instance: TestVm) -> Result<()> {
     }
 
     Ok(())
+}
+
+pub fn handle_storages(dev_mgr: Arc<RwLock<DeviceManager>>, storage_list: &str, host_share: String) -> Result<()> {
+    debug!(sl!(), "handle_storages");
+
+    utils::do_handle_storage(dev_mgr.clone(), storage_list, host_share)
 }

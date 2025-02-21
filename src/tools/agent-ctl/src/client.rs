@@ -8,6 +8,7 @@
 use crate::types::*;
 use crate::utils;
 use crate::vm;
+use crate::vm::utils::get_virtiofs_storage;
 use anyhow::{anyhow, Result};
 use byteorder::ByteOrder;
 use nix::sys::socket::{connect, socket, AddressFamily, VsockAddr, SockFlag, SockType, UnixAddr};
@@ -668,6 +669,22 @@ pub fn client(cfg: &mut Config, commands: Vec<&str>) -> Result<()> {
             cfg.shared_fs_host_path = test_vm_instance.shared_fs_info.shared_path.clone();
         }
 
+        // if storages list is provided, handle it now
+        if !cfg.storages.is_empty() {
+            debug!(sl!(), "handling storages");
+            match vm::handle_storages(
+                test_vm_instance.device_manager.clone(),
+                &cfg.storages,
+                test_vm_instance.shared_fs_info.shared_path.clone(),
+            ) {
+                Ok(_) => debug!(sl!(), "storages handled"),
+                Err(e) => {
+                    debug!(sl!(), "error parsing storages: {}", e);
+                    return vm::stop_test_vm(test_vm_instance.clone());
+                }
+            }
+        }
+
         match run_client(cfg, commands) {
             Ok(_) => debug!(sl!(), "Commands tested successfully"),
             Err(e) => debug!(sl!(), "Command failed: {}", e),
@@ -1000,6 +1017,8 @@ fn agent_cmd_sandbox_create(
         req.set_sandbox_id(utils::random_sandbox_id());
     }
 
+    req.mut_storages().push(get_virtiofs_storage());
+
     let ctx = clone_context(ctx);
 
     debug!(sl!(), "sending request"; "request" => format!("{:?}", req));
@@ -1066,9 +1085,12 @@ fn agent_cmd_container_create(
 
     debug!(sl!(), "sending request"; "request" => format!("{:?}", req));
 
-    let reply = client
-        .create_container(ctx, &req)
-        .map_err(|e| anyhow!("{:?}", e).context(ERR_API_FAILED))?;
+    let reply = match client.create_container(ctx, &req) {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(anyhow!("Failed: {}", e));
+        }
+    };
 
     info!(sl!(), "response received";
         "response" => format!("{:?}", reply));
@@ -1107,14 +1129,12 @@ fn agent_cmd_container_remove(
     info!(sl!(), "response received";
         "response" => format!("{:?}", reply));
 
-    // Unmount the share fs
     let share_fs_path = match options.get("shared-path") {
         Some(p) => p.to_string(),
         None => "".to_string(),
     };
 
-    // Unmount the rootfs mount point.
-    utils::remove_container_image_mount(req.container_id(), &share_fs_path)?;
+    utils::remove_container_mounts(req.container_id(), &share_fs_path)?;
 
     Ok(())
 }

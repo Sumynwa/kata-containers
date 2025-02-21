@@ -102,6 +102,7 @@ fn virtiofsd_args(cfg: SharedFsInfo, shared_dir: &str, sock_path: &str, disable_
         String::from("none"),
         String::from("--seccomp"),
         String::from("none"),
+        String::from("--announce-submounts"),
     ];
 
     if cfg.virtio_fs_extra_args.is_empty() {
