@@ -287,7 +287,7 @@ async fn handle_shared_volume(vol: Storage, host_base_path: String) -> Result<()
     Ok(())
 }
 
-pub fn do_handle_storage(
+pub async fn do_handle_storage(
     dev_mgr: Arc<RwLock<DeviceManager>>,
     list_path: &str,
     host_share_path: String,
@@ -301,19 +301,11 @@ pub fn do_handle_storage(
         match storage.driver.as_str() {
             "blk" => {
                 debug!(sl!(), "do_handle_storage: block device");
-                let _ = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?
-                    .block_on(handle_block_volume(&dev_mgr, storage.clone()))
-                    .context("failed to handle block volume")?;
+                handle_block_volume(&dev_mgr, storage.clone()).await?;
             }
             "virtio-fs" => {
                 debug!(sl!(), "do_handle_storage: virtio-fs share");
-                let _ = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?
-                    .block_on(handle_shared_volume(storage.clone(), host_share_path.clone()))
-                    .context("failed to handle share fs")?;
+                handle_shared_volume(storage.clone(), host_share_path.clone()).await?;
             }
             _ => return Err(anyhow!("{} storage type is not supported", storage.driver)),
         };
