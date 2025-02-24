@@ -132,5 +132,9 @@ pub fn stop_test_vm(vm_instance: TestVm) -> Result<()> {
 pub fn handle_storages(dev_mgr: Arc<RwLock<DeviceManager>>, storage_list: &str, host_share: String) -> Result<()> {
     debug!(sl!(), "handle_storages");
 
-    utils::do_handle_storage(dev_mgr.clone(), storage_list, host_share)
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(utils::do_handle_storage(dev_mgr.clone(), storage_list, host_share))
+        .context("failed to handle storages")
 }
