@@ -27,6 +27,9 @@ use std::os::unix::net::UnixStream;
 use std::thread::sleep;
 use std::time::Duration;
 use ttrpc::context::Context;
+use std::sync::Arc;
+use hypervisor::device::device_manager::DeviceManager;
+use tokio::sync::RwLock;
 
 // Run the specified closure to set an automatic value if the ttRPC Context
 // does not contain the special values requesting automatic values be
@@ -669,23 +672,7 @@ pub fn client(cfg: &mut Config, commands: Vec<&str>) -> Result<()> {
             cfg.shared_fs_host_path = test_vm_instance.shared_fs_info.shared_path.clone();
         }
 
-        // if storages list is provided, handle it now
-        if !cfg.storages.is_empty() {
-            debug!(sl!(), "handling storages");
-            match vm::handle_storages(
-                test_vm_instance.device_manager.clone(),
-                &cfg.storages,
-                test_vm_instance.shared_fs_info.shared_path.clone(),
-            ) {
-                Ok(_) => debug!(sl!(), "storages handled"),
-                Err(e) => {
-                    debug!(sl!(), "error parsing storages: {}", e);
-                    return vm::stop_test_vm(test_vm_instance.clone());
-                }
-            }
-        }
-
-        match run_client(cfg, commands) {
+        match run_client(cfg, commands, Some(test_vm_instance.device_manager.clone())) {
             Ok(_) => debug!(sl!(), "Commands tested successfully"),
             Err(e) => debug!(sl!(), "Command failed: {}", e),
         }
@@ -693,11 +680,15 @@ pub fn client(cfg: &mut Config, commands: Vec<&str>) -> Result<()> {
         debug!(sl!(), "Shutting down vm");
         vm::stop_test_vm(test_vm_instance)
     } else {
-        run_client(cfg, commands)
+        run_client(cfg, commands, None)
     }
 }
 
-pub fn run_client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
+pub fn run_client(
+    cfg: &Config,
+    commands: Vec<&str>,
+    dev_mgr: Option<Arc<RwLock<DeviceManager>>>
+) -> Result<()> {
     announce(cfg);
 
     // Create separate connections for each of the services provided
@@ -743,7 +734,7 @@ pub fn run_client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
         "server-address" => cfg.server_address.to_string());
 
     if cfg.interactive {
-        return interactive_client_loop(cfg, &mut options, &client, &health, &ttrpc_ctx);
+        return interactive_client_loop(cfg, &mut options, &client, &health, &ttrpc_ctx, dev_mgr);
     }
 
     let mut repeat_count = 1;
@@ -752,6 +743,15 @@ pub fn run_client(cfg: &Config, commands: Vec<&str>) -> Result<()> {
         if cmd.starts_with(CMD_REPEAT) {
             repeat_count = get_repeat_count(cmd);
             continue;
+        }
+
+        if cmd.starts_with("CreateContainer") && !cfg.storages.is_empty() && dev_mgr.is_some() {
+            debug!(sl!(), "handling volumes before create container request");
+            vm::handle_storages(
+                dev_mgr.clone().unwrap(),
+                &cfg.storages,
+                cfg.shared_fs_host_path.clone(),
+            )?;
         }
 
         let (result, shutdown) = handle_cmd(
@@ -902,6 +902,7 @@ fn interactive_client_loop(
     client: &AgentServiceClient,
     health: &HealthClient,
     ctx: &Context,
+    dev_mgr: Option<Arc<RwLock<DeviceManager>>>
 ) -> Result<()> {
     let result = builtin_cmd_list("");
     if result.0.is_err() {
@@ -921,6 +922,15 @@ fn interactive_client_loop(
         if cmdline.starts_with(CMD_REPEAT) {
             repeat_count = get_repeat_count(&cmdline);
             continue;
+        }
+
+        if cmdline.starts_with("CreateContainer") && !cfg.storages.is_empty() && dev_mgr.is_some() {
+            debug!(sl!(), "handling volumes before create container request");
+            vm::handle_storages(
+                dev_mgr.clone().unwrap(),
+                &cfg.storages,
+                cfg.shared_fs_host_path.clone(),
+            )?;
         }
 
         let (result, shutdown) =
