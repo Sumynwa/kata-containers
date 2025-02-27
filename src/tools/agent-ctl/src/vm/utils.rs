@@ -225,9 +225,17 @@ async fn handle_block_volume(
     // generate the OCI Mount specific to this volume
     let mut mount = Mount::default();
     mount.set_destination(mount_dest);
-    mount.set_type(vol.fstype.clone());
-    mount.set_source(guest_path);
+    // oci mount fstype should be set to bind since the block device
+    // is already mounted over a guest path.
+    mount.set_type("bind".to_string());
+    mount.set_source(guest_path.clone());
+    // set default options as provided via template
     mount.set_options(vol.options.clone());
+    // check if bind is missing, add it
+    if !mount.options().contains(&"bind".to_string()) {
+        debug!(sl!(), "handle_block_volume:: setting bind in options");
+        mount.mut_options().push("bind".to_string());
+    }
 
     // now we save these in global arrays
     STORAGE_INFO.lock().await.push(vol);
@@ -254,32 +262,29 @@ async fn handle_shared_volume(vol: Storage, host_base_path: String) -> Result<()
 
     let file_name = Path::new(&vol.source).file_name().unwrap().to_str().unwrap();
     let random_str = generate_random_hex_string(32 as u32);
-    let mut host_share_path = host_base_path.clone();//get_host_share_path(host_base_path.clone().as_str(), random_str.clone().as_str(), share_dir.clone().as_str());
-    host_share_path.push_str("/");
-    host_share_path.push_str(random_str.clone().as_str());
-    host_share_path.push_str("-");
-    host_share_path.push_str(file_name);
+    let host_share_path = get_host_share_path(host_base_path.clone().as_str(), random_str.clone().as_str(), file_name);
 
     debug!(sl!(), "handle_shared_volume:: mounting {} on host source: {}", &vol.source, host_share_path);
     mount::bind_mount_unchecked(&vol.source, &host_share_path, true, MsFlags::MS_SLAVE)
         .with_context(|| format!("handle_shared_volume:: failed to bind mount {} to {}", &vol.source, &host_share_path))?;
 
     // Generate the guest equivalent path
-    let mut guest_path = GUEST_SHARED_PATH.to_string();//generate_path(GUEST_SHARED_PATH, random_str.clone().as_str(), share_dir.clone().as_str());
-    guest_path.push_str("/");
-    guest_path.push_str(random_str.clone().as_str());
-    guest_path.push_str("-");
-    guest_path.push_str(file_name);
+    let guest_path = generate_path(GUEST_SHARED_PATH, random_str.clone().as_str(), file_name);
 
-    let mount_dest = CNT_MNT_BASE.to_string();//generate_path(CNT_MNT_BASE, random_str.clone().as_str(), share_dir.clone().as_str());
+    let mount_dest = generate_path(CNT_MNT_BASE, random_str.clone().as_str(), file_name);
     debug!(sl!(), "handle_shared_volume: guest source: {} mount dest path: {}", guest_path, mount_dest);
 
     // generate the OCI Mount specific to this volume
     let mut mount = Mount::default();
     mount.set_destination(mount_dest);
-    mount.set_type(vol.fstype.clone());
+    mount.set_type("bind".to_string());
     mount.set_source(guest_path);
     mount.set_options(vol.options.clone());
+    // check if bind is missing, add it
+    if !mount.options().contains(&"bind".to_string()) {
+        debug!(sl!(), "handle_shared_volume:: setting bind in options");
+        mount.mut_options().push("bind".to_string());
+    }
 
     OCI_MOUNTS_INFO.lock().await.push(mount);
     UNMOUNT_HOST_INFO.lock().await.push(host_share_path);
