@@ -803,7 +803,8 @@ impl CloudHypervisorInner {
     pub(crate) async fn capabilities(&self) -> Result<Capabilities> {
         let mut caps = Capabilities::default();
 
-        let flags = if guest_protection_is_tdx(self.guest_protection_to_use.clone()) {
+        let flags = if guest_protection_is_tdx(self.guest_protection_to_use.clone())
+            || self.hypervisor_config().shared_fs.shared_fs.is_none() {
             // TDX does not permit the use of virtio-fs.
             CapabilityBits::BlockDeviceSupport
                 | CapabilityBits::BlockDeviceHotplugSupport
